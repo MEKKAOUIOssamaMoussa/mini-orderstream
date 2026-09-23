@@ -208,8 +208,32 @@ split later if needed.
 - No schema registry.
 - No exactly-once processing.
 - Traffic is simulated.
+- Database credentials are written in plain text in `docker-compose.yml`. Fine for local use only.
 
 ## Findings
 
-Nothing yet. Each stage adds what actually happened when it differs from the
-plan above.
+### Stage 1
+
+- Keys are hashed byte for byte. While testing with the console producer, a
+  key typed with leading spaces (`   order-42`) landed in partition 2, while
+  `order-42` had gone to partition 0. The relay therefore builds keys only
+  from the order UUID read from the database, never from formatted or typed
+  text.
+- `--from-beginning` only applies to a consumer group with no committed
+  offsets. With an existing group, the console consumer resumed from its
+  offsets and printed only the 2 messages sent while it was stopped.
+- Kafka warns that `.` and `_` collide in metric names. Topic names in this
+  project use dots only.
+- Kafka 4.3 suggests the new consumer group protocol (KIP-848,
+  `group.protocol=consumer`). Classic or new is decided in stage 5.
+- The EXTERNAL listener (`localhost:9094`) is configured but not tested yet.
+  No client runs outside Docker until stage 3.
+
+
+### No volumes: data lives as long as the containers
+
+Neither Kafka nor Postgres uses a Docker volume. `docker compose stop` and
+`start` keep all data, which is enough for the failure tests.
+`docker compose down -v` wipes both at the same time. Resetting only one of
+them would leave them disagreeing: the outbox would mark events as sent that
+Kafka no longer has.
