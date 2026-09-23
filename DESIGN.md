@@ -1,0 +1,215 @@
+# mini-orderstream: design
+
+A small event pipeline built to get hands-on experience with Kafka. An order
+simulator writes to Postgres, a relay publishes those changes to Kafka, and two
+consumer groups process the same events for different purposes. One broker,
+everything runs locally with Docker Compose.
+
+This document was written before the code. It gets updated as each stage is
+built; when a decision changes, the reason goes in the Findings section at the
+bottom instead of silently replacing the old text.
+
+## Architecture
+
+```
+                 +-------------- Postgres (one container) ---------------+
+                 |                                                       |
++-----------+    |  orders_db                   analytics_db             |
+| simulator |--->|   - orders                    - customer_stats        |
++-----------+    |   - outbox  <--+              - processed_events  <-+ |
+                 +----------------|------------------------------------|-+
+                                  | 1. read unsent rows                |
+                            +-----+-----+                              |
+                            |   relay   |  2. publish to Kafka         |
+                            +-----+-----+  3. set sent_at              |
+                                  v                                    |
+                 +------ Kafka (1 broker, KRaft) ------+               |
+                 | topic orders.events, 3 partitions   |               |
+                 | key = order_id                      |               |
+                 +-------+---------------------+-------+               |
+                         |                     |                       |
+              group "analytics"           group "audit"                |
+          +--------------+--------------+ +--------------+             |
+          | analytics #1 | analytics #2 | | audit-logger |--> log file |
+          +------+-------+------+-------+ +--------------+             |
+                 +--------------+--------------------------------------+
+```
+
+## Components
+
+**simulator**: roughly once per second, either creates an order for a random
+customer (pool of 20 customers) or moves an existing order to its next status.
+Each change runs in one transaction that writes the `orders` row and inserts an
+`outbox` row.
+
+**relay**: polls `outbox` for rows where `sent_at` is null, oldest first,
+publishes each one to `orders.events` with the order id as key, waits for Kafka
+to acknowledge, then sets `sent_at`. Only one relay instance runs.
+
+**analytics-consumer**: consumer group `analytics`, runs as 2 instances.
+Maintains `customer_stats`. For each event, in one transaction: insert the
+event id into `processed_events` (skip the event if it is already there), then
+update the customer's row. Offsets are committed by hand after that
+transaction commits.
+
+**audit-consumer**: consumer group `audit`. Appends one line per received event
+to a log file on a Docker volume. No duplicate check (see decisions).
+
+**postgres**: one container with two databases. The shop side only uses
+`orders_db`, the analytics side only uses `analytics_db`. Kafka is the only
+link between them.
+
+**kafka**: one node in KRaft mode acting as both broker and controller. The
+topic is created explicitly with 3 partitions and replication factor 1;
+automatic topic creation is turned off.
+
+## Order lifecycle
+
+```
+CREATED -> PAID -> SHIPPED
+CREATED -> CANCELLED
+```
+
+## Tables
+
+orders_db:
+
+- `orders(id uuid pk, customer_id int, amount numeric(10,2), status text, created_at, updated_at)`
+- `outbox(id bigserial pk, event_id uuid unique, order_id uuid, event_type text, payload jsonb, created_at, sent_at null)`
+
+`outbox` has two ids on purpose. `id` is an increasing number the relay uses to
+read rows in the order they were written. `event_id` is the identity of the
+event itself and travels inside the Kafka message.
+
+analytics_db:
+
+- `customer_stats(customer_id pk, orders_created, orders_paid, orders_shipped, orders_cancelled, total_paid)`
+- `processed_events(event_id uuid pk, processed_at)`
+
+## Event format
+
+JSON. Both event types (`OrderCreated`, `OrderStatusChanged`) use the same shape:
+
+```json
+{
+  "eventId": "6f1c...",
+  "eventType": "OrderStatusChanged",
+  "schemaVersion": 1,
+  "orderId": "a83e...",
+  "customerId": 7,
+  "amount": 80.00,
+  "status": "PAID",
+  "occurredAt": "2026-09-23T14:02:11Z"
+}
+```
+
+## Decisions
+
+### KRaft, no ZooKeeper
+
+Kafka 4.0 removed ZooKeeper support, so KRaft is how Kafka runs now. It also
+means one container fewer.
+
+### Outbox table polled by a relay
+
+Options considered:
+
+- Simulator writes to Postgres, then publishes to Kafka itself. These are two
+  separate writes with no shared transaction. A crash between them leaves
+  Postgres and Kafka disagreeing, with no way to notice.
+- Poll the `orders` table by `updated_at`. Only the latest state is visible,
+  so an order that goes PAID then SHIPPED between two polls loses its PAID
+  event. Rows with identical timestamps are also easy to skip.
+- CDC with Debezium, reading Postgres's write-ahead log. This is what
+  production systems often use, but it adds Kafka Connect and Debezium to the
+  setup and hides the part I want to write myself.
+- Outbox: the order change and the event are written in the same transaction,
+  and a separate relay publishes the events. **Chosen.**
+
+The cost of the outbox: if the relay crashes after publishing but before
+setting `sent_at`, it publishes the same event again on restart. Consumers have
+to cope with that (see below).
+
+### Partition key = order_id
+
+Kafka only keeps messages in order inside one partition. Using the order id as
+key sends every event of an order to the same partition, so consumers always
+see CREATED before PAID before SHIPPED.
+
+The alternative was `customer_id`. It would also keep ordering per customer,
+but a few busy customers could overload one partition, and nothing here needs
+ordering across different orders of the same customer.
+
+Side effect: one customer's orders are spread across partitions, so the two
+analytics instances can update the same `customer_stats` row at the same time.
+That is safe because every update is a single `SET x = x + ...` statement,
+which Postgres applies under a row lock.
+
+### 3 partitions
+
+Enough to see an uneven split with 2 consumers (2 partitions and 1), and an
+idle consumer when scaled to 4.
+
+### At-least-once delivery, offsets committed by hand
+
+`enable.auto.commit=false`. The consumer commits its offset only after the
+database transaction has committed. A crash in between means the event is
+delivered again on restart. Events are never lost, but can arrive more than
+once.
+
+Exactly-once is not attempted. Kafka transactions cover writes to Kafka, not to
+Postgres, so for a database sink the usual approach is this one: at-least-once
+delivery plus a write that is safe to repeat.
+
+### Analytics skips duplicates, audit keeps them
+
+Analytics keeps totals, so counting an event twice would make them wrong. It
+records every event id it has processed and skips ones it has already seen.
+
+Audit only writes a line per event, so a duplicate breaks nothing. It keeps
+duplicates on purpose: during the failure tests, the audit log shows that a
+duplicate was delivered and `customer_stats` shows it was counted once.
+
+### JSON with a schemaVersion field
+
+Readable with Kafka's console consumer and needs no extra services. Avro with
+a Schema Registry would enforce compatibility between producers and consumers;
+here the `schemaVersion` field is a manual reminder that the format can
+change. Consumers ignore unknown fields, so adding a field does not break them.
+
+### Plain kafka-clients, no Spring
+
+Spring Kafka sets up the producer, the consumer poll loop and offset commits
+for you. The point of this project is to write those by hand. Stack: Java 21
+(Temurin), Maven multi-module, JDBC with HikariCP, Jackson for JSON.
+
+### One Postgres container, two databases
+
+Keeps the two sides' data separate without running a second container. Easy to
+split later if needed.
+
+## Stages
+
+| # | Builds | Exercises |
+|---|--------|-----------|
+| 0 | This document | |
+| 1 | Compose file: Kafka + Postgres, topic creation | Container networking, Kafka listeners, testing with console producer/consumer |
+| 2 | Tables + simulator | Transactions, outbox writes |
+| 3 | Relay | Producer config: acks, idempotence, serializers, key to partition |
+| 4 | Analytics consumer | Poll loop, deserializers, manual commits, duplicate-safe writes |
+| 5 | Consumer groups | Partition assignment, rebalancing, separate offsets per group, lag |
+| 6 | Failure tests | Crash before commit, redelivery, resuming from committed offset |
+| 7 | README | |
+
+## Known limitations
+
+- One broker: no replication and no leader failover.
+- One relay instance; running several would need row locking on `outbox`.
+- No schema registry.
+- No exactly-once processing.
+- Traffic is simulated.
+
+## Findings
+
+Nothing yet. Each stage adds what actually happened when it differs from the
+plan above.
