@@ -264,3 +264,14 @@ Kafka no longer has.
   therefore publishes Postgres's rendering, not the simulator's original
   text. Harmless here, since consumers read fields by name; a `json` or `text`
   column would be needed to keep the exact bytes.
+
+### Stage 4
+
+- First run processed the whole backlog, then kept up with live traffic.
+  With the simulator paused, customer_stats matched the orders table
+  exactly: 10,890 orders created, 7,733 paid, 1,180,360.24 total paid. The
+  analytics side never reads orders_db, so these numbers come only from the
+  events in Kafka.
+- No duplicates on the first run, as expected: the relay never crashed.
+- On shutdown the consumer logs "revoked partitions: [0, 1, 2]" before
+  closing: it leaves the group instead of waiting to be timed out.
