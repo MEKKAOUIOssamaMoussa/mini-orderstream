@@ -71,3 +71,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  simulator:
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orders_db
+      DB_USER: orderstream
+      DB_PASSWORD: orderstream
+      SIM_INTERVAL_MS: 1000
