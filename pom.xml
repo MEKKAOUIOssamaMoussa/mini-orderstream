@@ -13,6 +13,7 @@
         <module>common</module>
         <module>simulator</module>
         <module>relay</module>
+        <module>analytics-consumer</module>
     </modules>
 
     <properties>
