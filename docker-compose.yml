@@ -99,3 +99,19 @@ services:
       DB_USER: orderstream
       DB_PASSWORD: orderstream
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  analytics-consumer:
+    build:
+      context: .
+      dockerfile: analytics-consumer/Dockerfile
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/analytics_db
+      DB_USER: orderstream
+      DB_PASSWORD: orderstream
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
