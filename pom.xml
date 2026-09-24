@@ -12,6 +12,7 @@
     <modules>
         <module>common</module>
         <module>simulator</module>
+        <module>relay</module>
     </modules>
 
     <properties>
@@ -23,6 +24,7 @@
         <jackson.version>2.19.2</jackson.version>
         <logback.version>1.5.18</logback.version>
         <slf4j.version>2.0.17</slf4j.version>
+        <kafka.version>4.3.1</kafka.version>
     </properties>
 
     <!-- Versions only. A module still has to list a dependency to actually get it. -->
@@ -62,6 +64,11 @@
                 <groupId>ch.qos.logback</groupId>
                 <artifactId>logback-classic</artifactId>
                 <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>${kafka.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
