@@ -258,3 +258,9 @@ Kafka no longer has.
 - On first start the relay drained a backlog of about 15,800 outbox rows. The
   three partitions ended up with 5,120, 5,482 and 5,276 messages: hashing the
   order id spreads orders evenly.
+- Messages in Kafka have their JSON keys in a different order from the
+  OrderEvent record, with spaces after colons. The payload column is `jsonb`,
+  which stores parsed JSON and writes its own text when read back. The relay
+  therefore publishes Postgres's rendering, not the simulator's original
+  text. Harmless here, since consumers read fields by name; a `json` or `text`
+  column would be needed to keep the exact bytes.

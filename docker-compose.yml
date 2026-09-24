@@ -84,3 +84,18 @@ services:
       DB_USER: orderstream
       DB_PASSWORD: orderstream
       SIM_INTERVAL_MS: 1000
+
+  relay:
+    build:
+      context: .
+      dockerfile: relay/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/orders_db
+      DB_USER: orderstream
+      DB_PASSWORD: orderstream
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
