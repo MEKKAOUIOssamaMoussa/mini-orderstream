@@ -249,3 +249,12 @@ Kafka no longer has.
 - Every Docker build of the simulator re-downloads all Maven dependencies
   (about a minute), because `COPY . .` changes whenever any file changes.
   Acceptable for now.
+
+### Stage 3
+
+- The EXTERNAL listener works: the relay ran from WSL against
+  `localhost:9094` and published normally. That confirms clients outside
+  Docker get `localhost:9094` back as the address to reconnect to.
+- On first start the relay drained a backlog of about 15,800 outbox rows. The
+  three partitions ended up with 5,120, 5,482 and 5,276 messages: hashing the
+  order id spreads orders evenly.
