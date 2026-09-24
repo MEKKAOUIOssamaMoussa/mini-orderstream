@@ -237,3 +237,15 @@ Neither Kafka nor Postgres uses a Docker volume. `docker compose stop` and
 `docker compose down -v` wipes both at the same time. Resetting only one of
 them would leave them disagreeing: the outbox would mark events as sent that
 Kafka no longer has.
+
+### Stage 2
+
+- The simulator first ran with no log output at all, only an SLF4J warning
+  about falling back to a no-op logger. `mvn dependency:tree` showed that
+  HikariCP brings in slf4j-api 1.7.36, and Maven picked it over logback's 2.x
+  version because HikariCP is declared first. Logback 1.5 only works with
+  slf4j-api 2.x. Fixed by pinning slf4j-api 2.0.17 in the parent pom's
+  dependencyManagement, which also applies to indirect dependencies.
+- Every Docker build of the simulator re-downloads all Maven dependencies
+  (about a minute), because `COPY . .` changes whenever any file changes.
+  Acceptable for now.

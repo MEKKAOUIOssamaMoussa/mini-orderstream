@@ -22,6 +22,7 @@
         <hikaricp.version>6.3.0</hikaricp.version>
         <jackson.version>2.19.2</jackson.version>
         <logback.version>1.5.18</logback.version>
+        <slf4j.version>2.0.17</slf4j.version>
     </properties>
 
     <!-- Versions only. A module still has to list a dependency to actually get it. -->
@@ -51,6 +52,11 @@
                 <groupId>com.fasterxml.jackson.datatype</groupId>
                 <artifactId>jackson-datatype-jsr310</artifactId>
                 <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>ch.qos.logback</groupId>
