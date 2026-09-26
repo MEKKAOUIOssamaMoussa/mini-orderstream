@@ -115,3 +115,20 @@ services:
       DB_USER: orderstream
       DB_PASSWORD: orderstream
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  audit-consumer:
+    build:
+      context: .
+      dockerfile: audit-consumer/Dockerfile
+    restart: on-failure
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AUDIT_FILE: /data/audit.log
+    volumes:
+      - audit-data:/data
+
+volumes:
+  audit-data:
