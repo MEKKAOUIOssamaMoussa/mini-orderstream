@@ -275,3 +275,19 @@ Kafka no longer has.
 - No duplicates on the first run, as expected: the relay never crashed.
 - On shutdown the consumer logs "revoked partitions: [0, 1, 2]" before
   closing: it leaves the group instead of waiting to be timed out.
+
+### Stage 5
+
+- Scaling the analytics group with `docker compose up --scale`:
+  1 consumer had [0, 1, 2]; with 2 consumers the split was [0, 1] and [2];
+  with 4 consumers one got `assigned partitions: []` and sat idle. A group
+  cannot use more consumers than the topic has partitions.
+- Every change triggered a full rebalance: each member first revoked all its
+  partitions, then received a new assignment. Existing members did not keep
+  their old partitions (the consumer holding [2] ended up with nothing).
+- Lag stayed at 0 through every rebalance. Offsets belong to the group, not
+  to a consumer, so a new owner continues from the group's committed offset.
+- Decision on the open stage 1 question: the classic group protocol is kept.
+  Its revoke-everything behaviour is visible in the logs and is what most
+  documentation describes. The KIP-848 protocol moves assignment to the
+  broker and only moves the partitions that need to move.
