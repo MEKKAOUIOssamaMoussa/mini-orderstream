@@ -291,3 +291,10 @@ Kafka no longer has.
   Its revoke-everything behaviour is visible in the logs and is what most
   documentation describes. The KIP-848 protocol moves assignment to the
   broker and only moves the partitions that need to move.
+- The audit consumer, in its own group, started with no committed offsets and
+  copied the whole topic from offset 0: 76,544 lines against 76,548 messages
+  a few seconds later.
+- With the audit consumer stopped for 30 seconds, the analytics group stayed
+  at lag 0 while the audit group's lag grew to 38. Its committed offsets
+  remained visible with no active member. On restart the first batch was 59
+  lines, then it was back to live traffic.
