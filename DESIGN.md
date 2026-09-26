@@ -298,3 +298,24 @@ Kafka no longer has.
   at lag 0 while the audit group's lag grew to 38. Its committed offsets
   remained visible with no active member. On restart the first batch was 59
   lines, then it was back to live traffic.
+
+### Stage 6
+
+- Relay crash after Kafka confirmed a batch of 8, before sent_at was written:
+  on restart all 8 events were published again at new offsets (for example
+  event 9073bb76 at offsets 32959 and 32961 of partition 2). The audit log
+  has both copies; the analytics consumer logged 8 "skipped duplicate" lines.
+- Analytics crash after writing 10 records, before the offset commit: the
+  batch was redelivered. The first batch after restart had 44 records, 34
+  applied and 10 duplicates.
+- A hard crash froze the analytics group for about 45 seconds. The process
+  was halted without leaving the group, so the dead member kept its
+  partitions until session.timeout.ms (45 s by default) expired: crash at
+  19:14:59, new assignment at 19:15:44. A clean shutdown leaves the group
+  immediately. A lower timeout would detect crashes sooner but could evict a
+  consumer that is only slow, for example during a long GC pause. Kept the
+  default.
+- The first totals comparison after that crash showed 16 orders missing. It
+  ran during the freeze. With lag confirmed at 0 on every partition, the
+  totals matched exactly: 39,445 orders, 27,900 paid, 4,254,270.92 total.
+  Comparing a consumer's totals only means something at lag 0.
