@@ -7,7 +7,8 @@ public record Config(
         String kafkaBootstrapServers,
         String topic,
         int batchSize,
-        long pollIntervalMs
+        long pollIntervalMs,
+        boolean crashOnceAfterSend
 ) {
     private static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5433/orders_db";
     private static final String DEFAULT_DB_USER = "orderstream";
@@ -25,8 +26,9 @@ public record Config(
         String topic = getEnvOrDefault("TOPIC", DEFAULT_TOPIC);
         int batchSize = getEnvOrDefaultInt("RELAY_BATCH_SIZE", DEFAULT_BATCH_SIZE);
         long pollIntervalMs = getEnvOrDefaultLong("RELAY_POLL_INTERVAL_MS", DEFAULT_POLL_INTERVAL_MS);
+        boolean crashOnceAfterSend = Boolean.parseBoolean(System.getenv("RELAY_CRASH_ONCE_AFTER_SEND"));
 
-        return new Config(dbUrl, dbUser, dbPassword, kafkaBootstrapServers, topic, batchSize, pollIntervalMs);
+        return new Config(dbUrl, dbUser, dbPassword, kafkaBootstrapServers, topic, batchSize, pollIntervalMs, crashOnceAfterSend);
     }
 
     private static String getEnvOrDefault(String key, String defaultValue) {

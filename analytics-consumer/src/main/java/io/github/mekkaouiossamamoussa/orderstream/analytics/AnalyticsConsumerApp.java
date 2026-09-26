@@ -15,6 +15,9 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
@@ -113,6 +116,7 @@ public class AnalyticsConsumerApp {
                 }
 
                 if (!records.isEmpty()) {
+                    maybeCrash(config, records.count());
                     consumer.commitSync();
                     log.info("batch of {} records: {} applied, {} duplicates",
                             records.count(), applied, duplicates);
@@ -138,6 +142,22 @@ public class AnalyticsConsumerApp {
                 running = false;
                 System.exit(1);
             }
+        }
+    }
+
+    private static void maybeCrash(Config config, int recordCount) {
+        if (!config.crashOnceBeforeCommit()) {
+            return;
+        }
+        Path crashFile = Path.of("/tmp/analytics-crashed");
+        if (!Files.exists(crashFile)) {
+            try {
+                Files.createFile(crashFile);
+            } catch (IOException e) {
+                log.error("Failed to create crash marker file {}", crashFile, e);
+            }
+            log.warn("crash test: halting after writing {} records, before committing offsets", recordCount);
+            Runtime.getRuntime().halt(1);
         }
     }
 }

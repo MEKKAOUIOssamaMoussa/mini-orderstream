@@ -7,6 +7,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -80,6 +83,8 @@ public class OutboxRelay {
                             row.eventId(), row.orderId(), metadata.partition(), metadata.offset());
                 }
 
+                maybeCrash(sentIds.size());
+
                 if (!sentIds.isEmpty()) {
                     try (PreparedStatement updateStmt = conn.prepareStatement(UPDATE_SENT_SQL)) {
                         Array idArray = conn.createArrayOf("bigint", sentIds.toArray(new Long[0]));
@@ -98,6 +103,22 @@ public class OutboxRelay {
                 }
                 throw e;
             }
+        }
+    }
+
+    private void maybeCrash(int confirmedCount) {
+        if (!config.crashOnceAfterSend() || confirmedCount == 0) {
+            return;
+        }
+        Path crashFile = Path.of("/tmp/relay-crashed");
+        if (!Files.exists(crashFile)) {
+            try {
+                Files.createFile(crashFile);
+            } catch (IOException e) {
+                log.error("Failed to create crash marker file {}", crashFile, e);
+            }
+            log.warn("crash test: halting after Kafka confirmed {} events, before marking them sent", confirmedCount);
+            Runtime.getRuntime().halt(1);
         }
     }
 

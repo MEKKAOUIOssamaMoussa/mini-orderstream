@@ -6,7 +6,8 @@ public record Config(
         String dbPassword,
         String kafkaBootstrapServers,
         String topic,
-        String groupId
+        String groupId,
+        boolean crashOnceBeforeCommit
 ) {
     private static final String DEFAULT_DB_URL = "jdbc:postgresql://localhost:5433/analytics_db";
     private static final String DEFAULT_DB_USER = "orderstream";
@@ -22,8 +23,9 @@ public record Config(
         String kafkaBootstrapServers = getEnvOrDefault("KAFKA_BOOTSTRAP_SERVERS", DEFAULT_KAFKA_BOOTSTRAP_SERVERS);
         String topic = getEnvOrDefault("TOPIC", DEFAULT_TOPIC);
         String groupId = getEnvOrDefault("GROUP_ID", DEFAULT_GROUP_ID);
+        boolean crashOnceBeforeCommit = Boolean.parseBoolean(System.getenv("ANALYTICS_CRASH_ONCE_BEFORE_COMMIT"));
 
-        return new Config(dbUrl, dbUser, dbPassword, kafkaBootstrapServers, topic, groupId);
+        return new Config(dbUrl, dbUser, dbPassword, kafkaBootstrapServers, topic, groupId, crashOnceBeforeCommit);
     }
 
     private static String getEnvOrDefault(String key, String defaultValue) {
